@@ -1,0 +1,225 @@
+---
+title: "Quick text mining analysis in R with BWCB data"
+author: "Jenea Adams"
+date: "DEC 2022"
+output:
+  html_document:
+    theme: cerulean
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+![](https://static.wixstatic.com/media/879f01_5359da7bf47d4241b1914ccee579eb92~mv2.png/v1/fill/w_200,h_80,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/879f01_794561c3f6874b4e8452329f0476bfee~mv2_edited.png)
+
+![](https://static.wixstatic.com/media/879f01_f27d2a4ddd4a4f288f7ea2ca8acbd064~mv2.png/v1/fill/w_194,h_194,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/879f01_f27d2a4ddd4a4f288f7ea2ca8acbd064~mv2.png)
+
+[Jenea I. Adams Website](http://jeneaiadams.com)
+
+# Introduction 
+
+While writing a grant for [BWCB](http://blackwomencompbio.org), I wanted to improve some data visualization strategies to communicate certain demographics of our membership. Of these metrics is member area of expertise, which is a free-response section on the BWCB member application. I knew I would need to dive into a new tool, so here I show what I've learned and look forward to using in the future with regard to text mining in R.
+
+References: 
+
+https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html
+
+https://books.psychstat.org/textmining/index.html#contents
+
+https://cran.r-project.org/web/packages/ggraph/vignettes/Layouts.html
+
+http://users.dimi.uniud.it/~massimo.franceschet/ns/syllabus/make/ggraph/ggraph.html 
+
+# Load Packages 
+```{r}
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(dplyr)
+library(igraph)
+library(ggraph)
+```
+
+
+# Load Data 
+
+Here we use ```read_csv()``` to create a tibble from the data we read in. We are using a CSV file of self-identified areas of expterise from 233 members in BWCB. 
+
+Set your working directory appropriately
+```{r}
+setwd("~/Downloads")
+members.tib = read_csv("member-expertise.csv")
+
+```
+```{r}
+head(members.tib)
+```
+
+# Monogram analysis: 1-word frequencies
+
+## Use the ```unnest_tokens``` function 
+
+We want to divide the responsesinto individual words: This will essentially crate a new column in your tibble called "word" where each word is its own row and mapped to its member. This will increase the dimensons of your tibble, so that's a good sanity check that this was used properly. 
+
+```{r}
+subjects = unnest_tokens(members.tib, word, Subject.area)
+```
+
+```{r}
+dim(subjects)
+```
+
+
+## Getting frequencies
+
+Next, we'll use the ``count`` function to get the frequencies of each word used
+
+```{r}
+word.freq = subjects %>% count(word, sort = T)
+word.freq
+```
+
+
+## Filtering out stop words 
+
+Looking at the list of most frequent words, "bioinformatics", "computer", and "biology" are expected to be frequent, however, there are words like "and", 'of", and "in" that are less informative to our analysis. We want to remove those, and there are tools and dataset to help remove these "stop words". 
+
+From [Psychstat](https://books.psychstat.org/textmining/word-frequency.html#:~:text=8%2C563%20more%20rows-,3.1%20Stopwords,-From%20the%20output): 
+
+> Tidytext includes a dataset called stop_words which consists of words from three systems.
+
+> SMART: This stopword list was built by Gerard Salton and Chris Buckley for the SMART information retrieval system at Cornell University. It consists of 571 words.
+
+> snowball: The snowball list is from the string processing language snowball. It has 174 words.
+
+> onix: This stopword list is probably the most widely used stopword list. It is from the onix system. This wordlist contains 429 words.
+
+The resource I linked shows how you can interface with these lists to remove stopwords from large-scale analysis, but ended up removing the words manually since our datset is smaller and there are only a few words to extract. 
+
+
+
+```{r}
+word.freq = subjects %>% count(word, sort = T) %>% filter(!(word == "and" | word =="in" | word =="of" | word =="phd" | word == "bsc"))
+word.freq
+```
+
+Now we have a cleaner list! 
+
+## Creating a bar plot 
+With 1-gram analysis (a sequence of one word), the easiest thing to do is create a barplot of word freuqncies. Wordcloud are also something easy to generate in R, if that's of interest. 
+
+Let's create a sorted barplot of the top 25 terms with ```ggplot```
+```{r}
+word.freq %>%
+  top_n(25) %>%
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(word, n)) + geom_col() + xlab(NULL) + coord_flip()
+```
+
+
+# Bigram analysis: 2-word frequencies + network generation
+
+## Word Frequencies
+
+1-grams are easy and fun to make, but they're less informative about more broad fiels and phrases we actually use to describe areas of expertise. "Computational Biology" is, itself, a bigram, and most descriptors of majors or programs are not just one word. Studing the bigrams in our dataset will also allows use to understand word associations. 
+
+Let's start by looking at bigram frequencies, just as we did witht he 1-gram analysis. We still use ``unnest_tokens()`` but this time, we specifc the number of grams as ``2``. 
+```{r}
+subjects2 = unnest_tokens(members.tib, word, Subject.area, token = "ngrams", n=2)
+head(subjects2)
+
+```
+
+
+## Filtering out stop words 
+Looking at the data, not we see words like "computational biophysics", but again, we have less informatives terms such as "and sciences". We need to get rid of rows with these unhelpful stop words. I used the ``grepl`` function within a ``filter`` pipe to achive this will our same word list.
+I also go ahead and clean out rows that may have sneaky NAs. 
+```{r}
+subjects2 = subjects2 %>% filter(!is.na(word)) %>% filter(!(grepl("and", word) | grepl("in", word) |grepl("of", word) |grepl("phd", word) | grepl("bsc", word)))
+```
+
+```{r}
+dim(subjects2)
+```
+
+
+Let's visualize an unsorted table of what our new ``word1`` and ``word2`` phrases look like. First, we need to separate our bigram into two words 
+```{r}
+subjects2.sep = subjects2 %>% separate(word, c("word1", "word2"), sep = " ")
+head(subjects2.sep)
+```
+
+The most common stop word "and" at least appears to be gone. 
+
+## Tabulate word counts
+
+Let's go back to our joined dataset to tabulate word counts for our bar plot
+```{r}
+subjects2.count = subjects2.sep %>% unite(word, word1, word2, sep = " ") %>% count(word, sort = T)
+
+```
+
+
+## Create a barplot 
+
+Create a barplot of the top 10 bigrams
+```{r}
+subjects2.count  %>% top_n(10) %>% mutate(word = reorder(word, n)) %>% ggplot(aes(word, n)) + geom_col() + xlab(NULL) + coord_flip() + labs(title = "BWCB Areas of Expertise")
+```
+
+
+## Network Analysis 
+
+We can use quick and easy tools to visualize relationships between the words in our dataset. The code relies mostly on ``ggraph`` with ``igraph`` objects. We pass our "separated" version of the bigram frequencies so  we can see the relationships between paired usage. 
+
+```{r}
+set.seed(20181005)
+```
+
+### Create ``igraph`` object 
+
+```{r}
+word.network = subjects2.sep %>% count(word1, word2, sort = TRUE) %>% filter(n > 
+    1) %>% graph_from_data_frame()
+
+```
+
+Learn more about interpreting this object: https://books.psychstat.org/textmining/word-frequency.html#:~:text=An%20igraph%20graph%20includes,and%20the%20end%20vertice. 
+
+
+### Generate network plot 
+Now we use ``ggraph`` to generate a network plot, a ``ggplot``cousin. First, since this will be a directed graph, we actually need to construct what these arrows look like witht he ``arrow`` function. 
+
+```{r}
+a = arrow(angle = 30, length = unit(0.1, "inches"), ends = "last", type = "open")
+```
+
+
+Next we create our network plot. 
+
+⚠️ Each graph generated has a unique graph id, and each graph can look slightly different with each run and depending on the layout you choose. You may have to run it a few times to get an acceptable orientation. 
+
+I spent more time playing with parameters (e.g. legend position, label orientation) and like this ``layout`` and ``hjust`` of the plot that works the best. Fee Free to adjust your Titles or remove/edit the caption. 
+```{r}
+ggraph(word.network, layout = "fr") + geom_edge_link(aes(color = n, width = n), arrow = a) + 
+      geom_node_point() + geom_node_text(aes(label = name), vjust = 1, hjust = 0.4) + labs(title = "BWCB Areas of Expertise", caption = "Data from 12/24/2022" ) + theme(legend.position="bottom", plot.margin = unit(c(1,1,1,1), "mm"))
+```
+
+## Interpretation
+💡 Patterns that stand out are an enrichment in the association of "computational" with "biology", "molecular" with "biology", and "computer" with "science". Our bar plot also shows that these three bigrams are the most frequent. Maybe this means that most BWCB members have expertise or are in programs with these titles! 
+
+
+## More Info
+
+For more information on higher order N-grams, I recommend visiting [this](https://books.psychstat.org/textmining/index.html) helpful worksheet created by Zhiyong Zhang. 
+
+
+
+![](https://static.wixstatic.com/media/879f01_5359da7bf47d4241b1914ccee579eb92~mv2.png/v1/fill/w_200,h_80,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/879f01_794561c3f6874b4e8452329f0476bfee~mv2_edited.png)
+
+![](https://static.wixstatic.com/media/879f01_f27d2a4ddd4a4f288f7ea2ca8acbd064~mv2.png/v1/fill/w_194,h_194,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/879f01_f27d2a4ddd4a4f288f7ea2ca8acbd064~mv2.png)
+
+[Jenea I. Adams Website](http://jeneaiadams.com)
