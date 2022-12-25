@@ -20,7 +20,7 @@ http://users.dimi.uniud.it/~massimo.franceschet/ns/syllabus/make/ggraph/ggraph.h
 [Jenea I. Adams Website](http://jeneaiadams.com)
 
 # Data 
-2022 Member area of expertise data from the Black Women in Computational Biology Network
+2022 Member area of expertise [data](https://github.com/jeneaadams/text-mining-with-r/blob/75685d9527d7b00c38e5c5c63cb5ad9dbdd9ce84/member-expertise.csv) from the Black Women in Computational Biology Network
 
 # Packages 
 ```
